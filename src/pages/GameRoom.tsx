@@ -36,8 +36,8 @@ const GameRoom = () => {
     : rooms.find(r => r.id === roomId);
     
   const gameInfo = room ? getGameById(room.gameId) : null;
-
-  const isHost = currentUser?.id === room?.host.id;
+  
+  // Removed the first isHost declaration here
   
   useEffect(() => {
     if (!room) {
