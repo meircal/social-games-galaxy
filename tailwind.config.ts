@@ -52,6 +52,15 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				game: {
+					purple: '#8B5CF6',
+					blue: '#0EA5E9',
+					pink: '#D946EF',
+					orange: '#F97316',
+					green: '#10B981',
+					yellow: '#FBBF24',
+					red: '#EF4444',
+				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
@@ -84,11 +93,61 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'pulse-glow': {
+					'0%, 100%': { 
+						opacity: '1',
+						boxShadow: '0 0 0 0 rgba(139, 92, 246, 0)'
+					},
+					'50%': { 
+						opacity: '0.85',
+						boxShadow: '0 0 20px 5px rgba(139, 92, 246, 0.6)'
+					}
+				},
+				'float': {
+					'0%, 100%': {
+						transform: 'translateY(0)'
+					},
+					'50%': {
+						transform: 'translateY(-10px)'
+					}
+				},
+				'timer-progress': {
+					'0%': { width: '100%' },
+					'100%': { width: '0%' }
+				},
+				'bounce-in': {
+					'0%': { 
+						transform: 'scale(0)',
+						opacity: '0'
+					},
+					'60%': { 
+						transform: 'scale(1.1)',
+						opacity: '1'
+					},
+					'100%': { 
+						transform: 'scale(1)'
+					}
+				},
+				'slide-in': {
+					'0%': { 
+						transform: 'translateY(20px)',
+						opacity: '0'
+					},
+					'100%': { 
+						transform: 'translateY(0)',
+						opacity: '1'
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+				'float': 'float 3s ease-in-out infinite',
+				'timer-progress': 'timer-progress linear',
+				'bounce-in': 'bounce-in 0.5s ease-out',
+				'slide-in': 'slide-in 0.3s ease-out'
 			}
 		}
 	},
