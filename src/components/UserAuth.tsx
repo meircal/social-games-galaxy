@@ -32,7 +32,7 @@ export const UserAuth = ({ onComplete }: UserAuthProps) => {
   
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-md animate-bounce-in">
+      <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl text-center">ברוכים הבאים לגלקסיית המשחקים</CardTitle>
           <CardDescription className="text-center">הזן את שמך כדי להתחיל לשחק</CardDescription>

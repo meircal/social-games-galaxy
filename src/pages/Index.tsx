@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +30,7 @@ const Index = () => {
               key={game.id}
               className={`group overflow-hidden transition-all duration-500 hover:shadow-2xl ${
                 hoveredGameId === game.id ? 'scale-105' : ''
-              } animate-fade-in opacity-0`}
+              }`}
               style={{
                 animationDelay: `${(index + 2) * 100}ms`,
                 borderColor: hoveredGameId === game.id ? game.color : undefined,
