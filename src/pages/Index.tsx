@@ -1,19 +1,39 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { gamesInfo } from "@/data/gameData";
-import { useAppSelector } from "@/store/hooks";
+import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { UserAuth } from "@/components/UserAuth";
 import { Trophy, Users, Clock } from "lucide-react";
+import { CreateGameModal } from "@/components/CreateGameModal";
 
 const Index = () => {
   const [hoveredGameId, setHoveredGameId] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(true);
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const { currentUser } = useAppSelector(state => state.user);
   
+  const handleCreateGame = (gameId: string) => {
+    if (!currentUser) {
+      setShowAuth(true);
+      return;
+    }
+    
+    setSelectedGameId(gameId);
+    setShowCreateModal(true);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/30 to-primary/20 py-12">
       {showAuth && !currentUser && <UserAuth onComplete={() => setShowAuth(false)} />}
+      {showCreateModal && selectedGameId && (
+        <CreateGameModal 
+          gameId={selectedGameId} 
+          onClose={() => setShowCreateModal(false)} 
+        />
+      )}
       <div className="container mx-auto px-4">
         <header className="text-center mb-16">
           <h1 className="text-6xl font-bold mb-6 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent animate-fade-in">
@@ -78,6 +98,7 @@ const Index = () => {
                     backgroundColor: game.color,
                     borderColor: 'transparent' 
                   }}
+                  onClick={() => handleCreateGame(game.id)}
                 >
                   <Trophy className="w-4 h-4 mr-2" />
                   צור משחק חדש
