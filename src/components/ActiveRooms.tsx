@@ -2,7 +2,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector } from "@/store/hooks";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -120,6 +120,8 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
                 <div className="space-y-3">
                   {activeRooms.map(room => {
                     const gameInfo = getGameById(room.gameId);
+                    const isHost = currentUser?.id === room.host.id;
+                    
                     return (
                       <Card key={room.id} className="hover:bg-accent/10 transition-colors">
                         <CardHeader className="py-3">
@@ -146,7 +148,7 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
                               onClick={() => handleJoinRoom(room.id)}
                             >
                               <Play className="h-3.5 w-3.5 mr-1" />
-                              הצטרף
+                              {isHost ? 'חזור לחדר' : 'הצטרף'}
                             </Button>
                           </div>
                         </CardContent>

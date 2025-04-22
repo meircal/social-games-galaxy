@@ -337,7 +337,9 @@ const GameRoom = () => {
   };
 
   const handleStartGame = () => {
-    if (!isHost) {
+    if (!room || !currentUser) return;
+    
+    if (currentUser.id !== room.host.id) {
       toast({
         title: "שגיאה",
         description: "רק מנהל החדר יכול להתחיל את המשחק",
@@ -524,6 +526,8 @@ const GameRoom = () => {
 
   if (!room || !currentUser) return null;
   
+  const isHost = currentUser.id === room.host.id;
+  
   return (
     <div className="container mx-auto px-4 py-8">
       <Card className="overflow-hidden">
@@ -559,17 +563,21 @@ const GameRoom = () => {
                 <h3 className="text-lg font-medium">סטטוס משחק</h3>
                 <p className="mt-1">
                   {room.status === 'waiting' ? 'ממתין למשתתפים' : 
-                  room.status === 'playing' ? 'משחק בתהליך' : 'משחק הסתיים'}
+                   room.status === 'playing' ? 'משחק בתהליך' : 'משחק הסתיים'}
                 </p>
               </div>
               
-              {isHost && room.status === 'waiting' && (
+              {isHost && room.status === 'waiting' ? (
                 <div className="flex justify-center">
                   <Button onClick={handleStartGame} className="gap-2">
                     <Play className="h-4 w-4" />
                     התחל משחק
                   </Button>
                 </div>
+              ) : room.status === 'waiting' && (
+                <p className="text-center text-muted-foreground">
+                  ממתין למנהל החדר להתחיל את המשחק...
+                </p>
               )}
             </div>
           ) : (
