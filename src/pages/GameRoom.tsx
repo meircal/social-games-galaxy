@@ -302,7 +302,24 @@ const GameRoom = () => {
     setGameStarted(false);
     setIsTimerRunning(false);
   };
-  
+
+  const handleSkip = () => {
+    if (!room) return;
+    
+    toast({
+      title: "דילגת על השאלה",
+      description: "עוברים לשאלה הבאה",
+    });
+    
+    if (room.gameId === GameId.Alias && gameState.aliasGame) {
+      const skippedWords = [...gameState.aliasGame.skippedWords, gameState.aliasGame.currentWord || ""];
+    } else if (room.gameId === GameId.Taboo && gameState.tabooGame) {
+      const failedWords = [...gameState.tabooGame.failedWords, gameState.tabooGame.currentWord || ""];
+    }
+    
+    moveToNextQuestion();
+  };
+
   if (!room || !currentUser) return null;
   
   return (
