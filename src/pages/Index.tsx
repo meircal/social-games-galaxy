@@ -7,12 +7,14 @@ import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { UserAuth } from "@/components/UserAuth";
 import { Trophy, Users, Clock } from "lucide-react";
 import { CreateGameModal } from "@/components/CreateGameModal";
+import ActiveRooms from "@/components/ActiveRooms";
 
 const Index = () => {
   const [hoveredGameId, setHoveredGameId] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(true);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showActiveRooms, setShowActiveRooms] = useState(false);
   const { currentUser } = useAppSelector(state => state.user);
   
   const handleCreateGame = (gameId: string) => {
@@ -24,6 +26,16 @@ const Index = () => {
     setSelectedGameId(gameId);
     setShowCreateModal(true);
   };
+  
+  const handleShowActiveRooms = (gameId?: string) => {
+    if (!currentUser) {
+      setShowAuth(true);
+      return;
+    }
+    
+    setSelectedGameId(gameId || null);
+    setShowActiveRooms(true);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/30 to-primary/20 py-12">
@@ -32,6 +44,12 @@ const Index = () => {
         <CreateGameModal 
           gameId={selectedGameId} 
           onClose={() => setShowCreateModal(false)} 
+        />
+      )}
+      {showActiveRooms && (
+        <ActiveRooms 
+          isOpen={showActiveRooms} 
+          onClose={() => setShowActiveRooms(false)} 
         />
       )}
       <div className="container mx-auto px-4">
@@ -103,13 +121,29 @@ const Index = () => {
                   <Trophy className="w-4 h-4 mr-2" />
                   צור משחק חדש
                 </Button>
-                <Button variant="outline" className="hover:bg-card/60">
+                <Button 
+                  variant="outline" 
+                  className="hover:bg-card/60"
+                  onClick={() => handleShowActiveRooms(game.id)}
+                >
                   <Users className="w-4 h-4 mr-2" />
                   חדרים פעילים
                 </Button>
               </CardFooter>
             </Card>
           ))}
+        </div>
+        
+        <div className="flex justify-center my-8">
+          <Button 
+            size="lg" 
+            variant="secondary"
+            onClick={() => handleShowActiveRooms()}
+            className="text-lg px-8 py-6 shadow-lg hover:shadow-xl transition-shadow"
+          >
+            <Users className="w-5 h-5 mr-2" />
+            הצג את כל החדרים הפעילים
+          </Button>
         </div>
         
         <footer className="text-center text-muted-foreground py-12 animate-fade-in opacity-0 [animation-delay:600ms]">

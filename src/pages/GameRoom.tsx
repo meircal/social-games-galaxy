@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
@@ -157,7 +158,163 @@ const GameRoom = () => {
         setRemainingTime(5);
         break;
         
+      case GameId.WhatAmI:
+        const whatAmITerms = ["נמר", "מחשב", "טלוויזיה", "כדורגל", "פיצה"];
+        dispatch(initializeWhatAmIGame({
+          roomId: room.id,
+          round: 1,
+          turn: initialTurnState,
+          scores: room.players.reduce((acc, player) => ({ ...acc, [player.id]: 0 }), {}),
+          gameStatus: 'playing',
+          termList: whatAmITerms,
+          usedTerms: [],
+          hints: [],
+          questions: [],
+          answers: [],
+          guessed: false,
+          currentTerm: whatAmITerms[0]
+        }));
+        setCurrentQuestion("נחש מה אני: רמזים יינתנו בהמשך");
+        break;
+
+      case GameId.WordChain:
+        dispatch(initializeWordChainGame({
+          roomId: room.id,
+          round: 1,
+          turn: initialTurnState,
+          scores: room.players.reduce((acc, player) => ({ ...acc, [player.id]: 0 }), {}),
+          gameStatus: 'playing',
+          wordChain: ["שמש"],
+          validationResults: {},
+          currentPlayerId: currentUser.id,
+          timePerTurn: 30,
+          currentWord: "שמש"
+        }));
+        setCurrentQuestion("שמש");
+        setRemainingTime(30);
+        break;
+
+      case GameId.TruthOrDare:
+        const truthQuestions = ["מה הדבר הכי מביך שקרה לך?", "מה החלום הכי מוזר שחלמת?", "מה הסוד שאף פעם לא סיפרת?"];
+        const dareQuestions = ["רקוד ריקוד מצחיק", "שיר שיר בקול רם", "עשה חיקוי של מישהו מפורסם"];
+        
+        dispatch(initializeTruthOrDareGame({
+          roomId: room.id,
+          round: 1,
+          turn: initialTurnState,
+          scores: room.players.reduce((acc, player) => ({ ...acc, [player.id]: 0 }), {}),
+          gameStatus: 'playing',
+          currentPlayerId: currentUser.id,
+          truthQuestions: truthQuestions,
+          dareChallenges: dareQuestions,
+          currentType: 'truth',
+          currentQuestion: truthQuestions[0],
+          responses: []
+        }));
+        setCurrentQuestion(truthQuestions[0]);
+        break;
+        
+      case GameId.GroupMemory:
+        dispatch(initializeGroupMemoryGame({
+          roomId: room.id,
+          round: 1,
+          turn: initialTurnState,
+          scores: room.players.reduce((acc, player) => ({ ...acc, [player.id]: 0 }), {}),
+          gameStatus: 'playing',
+          currentSequence: ["אדום"],
+          playerSequence: [],
+          currentPlayerId: currentUser.id,
+          maxSequenceLength: 10,
+          failedAttempt: false
+        }));
+        setCurrentQuestion("זכור את הרצף: אדום");
+        break;
+        
+      case GameId.ChineseWhispers:
+        dispatch(initializeChineseWhispersGame({
+          roomId: room.id,
+          round: 1,
+          turn: initialTurnState,
+          scores: room.players.reduce((acc, player) => ({ ...acc, [player.id]: 0 }), {}),
+          gameStatus: 'playing',
+          originalMessage: "היום יום שלישי בשבוע והשמש זורחת בחוץ",
+          currentMessage: "היום יום שלישי בשבוע והשמש זורחת בחוץ",
+          playerOrder: room.players.map(p => p.id),
+          currentPlayerIndex: 0,
+          messages: [],
+          revealed: false
+        }));
+        setCurrentQuestion("העבר את ההודעה: היום יום שלישי בשבוע והשמש זורחת בחוץ");
+        break;
+        
+      case GameId.Trivia:
+        const triviaQuestions = [
+          {
+            id: "q1",
+            text: "מה בירת ישראל?",
+            options: ["תל אביב", "חיפה", "ירושלים", "באר שבע"],
+            correctAnswer: 2,
+            category: "גאוגרפיה",
+            difficulty: "easy" as const
+          },
+          {
+            id: "q2",
+            text: "איזו מדינה היא הגדולה ביותר בעולם?",
+            options: ["סין", "קנדה", "ארה\"ב", "רוסיה"],
+            correctAnswer: 3,
+            category: "גאוגרפיה",
+            difficulty: "medium" as const
+          },
+          {
+            id: "q3",
+            text: "מי כתב את הספר ׳הנסיך הקטן׳?",
+            options: ["אנטואן דה סנט-אכזופרי", "ויקטור הוגו", "אלבר קאמי", "ז׳אן-פול סארטר"],
+            correctAnswer: 0,
+            category: "ספרות",
+            difficulty: "medium" as const
+          }
+        ];
+        
+        dispatch(initializeTriviaGame({
+          roomId: room.id,
+          round: 1,
+          turn: initialTurnState,
+          scores: room.players.reduce((acc, player) => ({ ...acc, [player.id]: 0 }), {}),
+          gameStatus: 'playing',
+          questions: triviaQuestions,
+          currentQuestionIndex: 0,
+          answers: {},
+          timePerQuestion: 20,
+          categories: ["גאוגרפיה", "ספרות", "היסטוריה", "מדע"]
+        }));
+        setCurrentQuestion(triviaQuestions[0].text);
+        setRemainingTime(20);
+        break;
+        
+      case GameId.MysteryCase:
+        dispatch(initializeMysteryCase({
+          roomId: room.id,
+          round: 1,
+          turn: initialTurnState,
+          scores: room.players.reduce((acc, player) => ({ ...acc, [player.id]: 0 }), {}),
+          gameStatus: 'playing',
+          caseName: "המטמון האבוד",
+          clues: [
+            "המטמון נמצא בתוך מבנה עתיק",
+            "ליד המטמון יש מים זורמים",
+            "על המטמון שומר בעל חיים",
+            "כדי להגיע למטמון צריך לפתור חידה"
+          ],
+          revealedClues: 1,
+          guesses: [],
+          solution: "המטמון נמצא במערה מאחורי המפל, שמור על ידי דרקון",
+          isSolved: false
+        }));
+        setCurrentQuestion("מקרה: המטמון האבוד\nרמז 1: המטמון נמצא בתוך מבנה עתיק");
+        break;
+        
       default:
+        // Fallback to Alias game if game type is unknown
         const defaultWords = ["כדורגל", "מחשב", "תפוח", "בית", "מכונית"];
         dispatch(initializeAliasGame({
           roomId: room.id,
@@ -237,7 +394,7 @@ const GameRoom = () => {
     switch (room.gameId) {
       case GameId.Alias:
         if (!gameState.aliasGame) return;
-        const usedWords = [...gameState.aliasGame.usedWords, gameState.aliasGame.currentWord];
+        const usedWords = [...gameState.aliasGame.usedWords, gameState.aliasGame.currentWord || ""];
         const availableWords = gameState.aliasGame.wordList.filter(w => !usedWords.includes(w));
         
         if (availableWords.length === 0) {
@@ -246,16 +403,59 @@ const GameRoom = () => {
         }
         
         nextQuestion = availableWords[Math.floor(Math.random() * availableWords.length)];
+        setCurrentQuestion(nextQuestion);
         break;
         
       case GameId.Taboo:
         if (!gameState.tabooGame) return;
+        const usedTabooWords = [...gameState.tabooGame.usedWords];
+        const availableCards = gameState.tabooGame.wordList.filter(card => 
+          !usedTabooWords.some(used => used.word === card.word)
+        );
+        
+        if (availableCards.length === 0) {
+          handleGameEnd();
+          return;
+        }
+        
+        const nextCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+        setCurrentQuestion(nextCard.word);
+        break;
+        
+      case GameId.FiveSeconds:
+        if (!gameState.fiveSecondsGame) return;
+        const usedQuestions = [...gameState.fiveSecondsGame.usedQuestions, gameState.fiveSecondsGame.currentQuestion || ""];
+        const availableQuestions = gameState.fiveSecondsGame.questionList.filter(q => !usedQuestions.includes(q));
+        
+        if (availableQuestions.length === 0) {
+          handleGameEnd();
+          return;
+        }
+        
+        nextQuestion = availableQuestions[Math.floor(Math.random() * availableQuestions.length)];
+        setCurrentQuestion(nextQuestion);
+        setRemainingTime(5);
+        break;
+
+      case GameId.Trivia:
+        if (!gameState.triviaGame) return;
+        const nextIndex = gameState.triviaGame.currentQuestionIndex + 1;
+        
+        if (nextIndex >= gameState.triviaGame.questions.length) {
+          handleGameEnd();
+          return;
+        }
+        
+        const nextTriviaQuestion = gameState.triviaGame.questions[nextIndex];
+        setCurrentQuestion(nextTriviaQuestion.text);
+        setRemainingTime(20);
         break;
         
       default:
+        // Handle other game types as needed
+        moveToNextPlayer();
+        return;
     }
-    
-    setCurrentQuestion(nextQuestion);
   };
 
   const moveToNextPlayer = () => {
@@ -280,6 +480,8 @@ const GameRoom = () => {
     }));
     
     if (nextPlayerIndex === 0) {
+      // Full round completed
+      // Could increment round counter here if needed
     }
   };
 
