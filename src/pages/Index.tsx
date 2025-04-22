@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { gamesInfo } from "@/data/gameData";
@@ -26,18 +26,19 @@ const Index = () => {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          {gamesInfo.map((game) => (
+          {gamesInfo.map((game, index) => (
             <Card 
               key={game.id}
               className={`group overflow-hidden transition-all duration-500 hover:shadow-2xl ${
                 hoveredGameId === game.id ? 'scale-105' : ''
-              } animate-fade-in opacity-0 [animation-delay:400ms] backdrop-blur-sm bg-card/90`}
-              onMouseEnter={() => setHoveredGameId(game.id)}
-              onMouseLeave={() => setHoveredGameId(null)}
+              } animate-fade-in opacity-0`}
               style={{
+                animationDelay: `${(index + 2) * 100}ms`,
                 borderColor: hoveredGameId === game.id ? game.color : undefined,
                 boxShadow: hoveredGameId === game.id ? `0 8px 32px -4px ${game.color}40` : undefined
               }}
+              onMouseEnter={() => setHoveredGameId(game.id)}
+              onMouseLeave={() => setHoveredGameId(null)}
             >
               <div 
                 className="h-40 relative overflow-hidden"

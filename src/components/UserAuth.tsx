@@ -26,6 +26,7 @@ export const UserAuth = ({ onComplete }: UserAuthProps) => {
       name: name.trim()
     }));
     
+    // Call the onComplete callback to hide the auth modal
     onComplete();
   };
   
@@ -44,6 +45,7 @@ export const UserAuth = ({ onComplete }: UserAuthProps) => {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="text-lg h-12"
+              autoFocus
             />
           </CardContent>
           <CardFooter className="flex justify-center">
