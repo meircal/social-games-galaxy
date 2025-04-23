@@ -22,6 +22,7 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
   const [roomName, setRoomName] = useState("");
   const [password, setPassword] = useState("");
   const [roomType, setRoomType] = useState<"public" | "private">("public");
+  const [isCreating, setIsCreating] = useState(false);
   const { currentUser } = useAppSelector((state) => state.user);
   const dispatch = useAppDispatch();
   const { toast } = useToast();
@@ -36,7 +37,7 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
     }
   }, [currentUser]);
   
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     if (!currentUser) {
       toast({
         title: "שגיאה",
@@ -64,45 +65,61 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
       return;
     }
     
-    const newRoom = {
-      name: roomName.trim(),
-      gameId: gameId as GameId,
-      type: roomType,
-      password: roomType === "private" ? password : undefined,
-      host: currentUser,
-      teams: [],
-      players: [currentUser],
-      settings: {},
-      status: "waiting" as const,
-    };
+    setIsCreating(true);
     
-    // Create the room through socketService
-    const roomId = socketService.createRoom(newRoom);
-    
-    if (roomId) {
-      // Create a complete room object
-      const currentDate = new Date().toISOString();
-      const completeRoom = {
-        ...newRoom,
-        id: roomId,
-        createdAt: currentDate
+    try {
+      const newRoom = {
+        name: roomName.trim(),
+        gameId: gameId as GameId,
+        type: roomType,
+        password: roomType === "private" ? password : undefined,
+        host: currentUser,
+        teams: [],
+        players: [currentUser],
+        settings: {},
+        status: "waiting" as const,
       };
       
-      // Set the current room in redux to ensure it's accessible
-      dispatch(setCurrentRoom(completeRoom));
+      // Create the room through socketService
+      const roomId = socketService.createRoom(newRoom);
       
+      if (roomId) {
+        // Create a complete room object
+        const currentDate = new Date().toISOString();
+        const completeRoom = {
+          ...newRoom,
+          id: roomId,
+          createdAt: currentDate
+        };
+        
+        // Set the current room in redux to ensure it's accessible
+        dispatch(setCurrentRoom(completeRoom));
+        
+        // Force a refresh of rooms to ensure they're updated across tabs/devices
+        socketService.forceRefreshRooms();
+        
+        toast({
+          title: "החדר נוצר בהצלחה",
+          description: `החדר "${roomName}" נוצר בהצלחה`,
+        });
+        
+        // Close the modal first
+        onClose();
+        
+        // Short delay before navigation to ensure state updates
+        setTimeout(() => {
+          navigate(`/room/${roomId}`);
+        }, 100);
+      }
+    } catch (error) {
+      console.error("Error creating room:", error);
       toast({
-        title: "החדר נוצר בהצלחה",
-        description: `החדר "${roomName}" נוצר בהצלחה`,
+        title: "שגיאה",
+        description: "אירעה שגיאה ביצירת החדר, נסה שוב",
+        variant: "destructive",
       });
-      
-      // Close the modal first
-      onClose();
-      
-      // Short delay before navigation to ensure state updates
-      setTimeout(() => {
-        navigate(`/room/${roomId}`);
-      }, 100);
+    } finally {
+      setIsCreating(false);
     }
   };
   
@@ -162,11 +179,11 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
           </div>
         </CardContent>
         <CardFooter className="flex justify-between">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={isCreating}>
             ביטול
           </Button>
-          <Button onClick={handleCreateRoom}>
-            צור משחק
+          <Button onClick={handleCreateRoom} disabled={isCreating}>
+            {isCreating ? "יוצר משחק..." : "צור משחק"}
           </Button>
         </CardFooter>
       </Card>
