@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 import { store } from '../store';
 import { 
@@ -10,59 +11,47 @@ import {
 } from '../store/slices/roomsSlice';
 import { Player, Room, Team } from '../types/game';
 
+// Generate a unique client ID for this browser instance
+const CLIENT_ID = Math.random().toString(36).substr(2, 9);
+const STORAGE_KEY = 'social_games_rooms';
 const SOCKET_URL = 'http://localhost:3000';
 
-let sharedMockRooms: Room[] = [];
-
-const clientId = Math.random().toString(36).substr(2, 9);
-
+// Attempt to load rooms from localStorage at module initialization
+let initialRooms: Room[] = [];
 try {
-  const savedRooms = localStorage.getItem('mockRooms');
+  const savedRooms = localStorage.getItem(STORAGE_KEY);
   if (savedRooms) {
-    sharedMockRooms = JSON.parse(savedRooms);
-    console.log('Loaded rooms from localStorage:', sharedMockRooms);
+    initialRooms = JSON.parse(savedRooms);
+    console.log('Loaded rooms from localStorage:', initialRooms);
   }
 } catch (e) {
-  console.error('Error loading mock rooms from localStorage', e);
+  console.error('Error loading rooms from localStorage', e);
 }
 
 class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
-  private mockRooms = sharedMockRooms;
-  private static connectedServices: SocketService[] = [];
+  private mockRooms: Room[] = initialRooms;
   private broadcastChannel: BroadcastChannel | null = null;
-  private storageListener: ((event: StorageEvent) => void) | null = null;
-
+  private pollingInterval: NodeJS.Timeout | null = null;
+  
+  // Connection management
   connect(userId: string) {
     if (this.isConnected) return;
     
-    SocketService.connectedServices.push(this);
+    console.log('Connecting socket service for user:', userId);
     
+    // Set up broadcast channel for cross-tab communication
     try {
-      this.broadcastChannel = new BroadcastChannel('socket_events');
+      this.broadcastChannel = new BroadcastChannel('social_games_sync');
       this.broadcastChannel.onmessage = (event) => {
         this.handleBroadcastMessage(event.data);
       };
     } catch (e) {
-      console.error('BroadcastChannel not supported', e);
+      console.error('BroadcastChannel not supported, falling back to localStorage only', e);
     }
     
-    this.storageListener = (event) => {
-      if (event.key === 'mockRooms' && event.newValue) {
-        try {
-          const updatedRooms = JSON.parse(event.newValue);
-          console.log('Detected localStorage change:', updatedRooms);
-          this.mockRooms = updatedRooms;
-          store.dispatch(setRooms(updatedRooms));
-        } catch (e) {
-          console.error('Error parsing rooms from localStorage', e);
-        }
-      }
-    };
-    
-    window.addEventListener('storage', this.storageListener);
-    
+    // Establish socket connection
     this.socket = io(SOCKET_URL, {
       query: { userId },
       autoConnect: true,
@@ -71,31 +60,19 @@ class SocketService {
     this.socket.on('connect', () => {
       console.log('Socket connected for user', userId);
       this.isConnected = true;
-      
       this.getRooms();
     });
 
     this.socket.on('disconnect', () => {
       console.log('Socket disconnected');
       this.isConnected = false;
-      
-      const index = SocketService.connectedServices.indexOf(this);
-      if (index !== -1) {
-        SocketService.connectedServices.splice(index, 1);
-      }
-      
-      if (this.broadcastChannel) {
-        this.broadcastChannel.close();
-        this.broadcastChannel = null;
-      }
-      
-      if (this.storageListener) {
-        window.removeEventListener('storage', this.storageListener);
-        this.storageListener = null;
-      }
+      this.cleanup();
     });
 
     this.setupEventListeners();
+    
+    // Start regular polling for room updates
+    this.startPolling();
   }
 
   disconnect() {
@@ -103,34 +80,100 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
-      
-      const index = SocketService.connectedServices.indexOf(this);
-      if (index !== -1) {
-        SocketService.connectedServices.splice(index, 1);
-      }
-      
-      if (this.broadcastChannel) {
-        this.broadcastChannel.close();
-        this.broadcastChannel = null;
-      }
-      
-      if (this.storageListener) {
-        window.removeEventListener('storage', this.storageListener);
-        this.storageListener = null;
-      }
+      this.cleanup();
+    }
+  }
+  
+  private cleanup() {
+    if (this.broadcastChannel) {
+      this.broadcastChannel.close();
+      this.broadcastChannel = null;
+    }
+    
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
     }
   }
 
-  private handleBroadcastMessage(data: { event: string; payload: any; sourceId: string }) {
-    if (data.sourceId === clientId) return;
+  // Broadcast handling for cross-tab/window communication
+  private handleBroadcastMessage(data: { action: string; payload: any; sourceId: string }) {
+    // Ignore messages from self
+    if (data.sourceId === CLIENT_ID) return;
     
     console.log('Received broadcast message:', data);
     
-    if (this.socket) {
-      this.socket.emit(data.event, data.payload);
+    switch (data.action) {
+      case 'ROOMS_UPDATED':
+        this.syncRoomsFromStorage();
+        break;
+      case 'ROOM_CREATED':
+        if (data.payload && typeof data.payload === 'object') {
+          const room = data.payload as Room;
+          this.addOrUpdateRoom(room, false);
+        }
+        break;
+      case 'FORCE_REFRESH':
+        this.syncRoomsFromStorage();
+        break;
     }
   }
 
+  private broadcast(action: string, payload?: any) {
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({
+          action,
+          payload,
+          sourceId: CLIENT_ID
+        });
+      } catch (e) {
+        console.error('Error broadcasting message', e);
+      }
+    }
+  }
+  
+  // Room data persistence
+  private saveRoomsToStorage() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.mockRooms));
+      // Signal that rooms have been updated
+      this.broadcast('ROOMS_UPDATED');
+    } catch (e) {
+      console.error('Error saving rooms to localStorage', e);
+    }
+  }
+  
+  private syncRoomsFromStorage() {
+    try {
+      const savedRooms = localStorage.getItem(STORAGE_KEY);
+      if (savedRooms) {
+        const parsedRooms = JSON.parse(savedRooms);
+        console.log('Syncing rooms from localStorage:', parsedRooms);
+        this.mockRooms = parsedRooms;
+        store.dispatch(setRooms([...this.mockRooms]));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Error syncing rooms from localStorage', e);
+      return false;
+    }
+  }
+
+  private startPolling() {
+    // Clear any existing polling interval
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+    }
+    
+    // Poll every 3 seconds for room updates
+    this.pollingInterval = setInterval(() => {
+      this.syncRoomsFromStorage();
+    }, 3000);
+  }
+  
+  // Event listeners for socket events
   setupEventListeners() {
     if (!this.socket) return;
 
@@ -151,95 +194,65 @@ class SocketService {
     });
     
     this.socket.on('room:created', (room: Room) => {
-      console.log('Room created event received', room);
-      store.dispatch(addRoom(room));
-    });
-    
-    this.socket.on('room:updated', (room: Room) => {
-      this.updateRoom(room);
+      this.addOrUpdateRoom(room);
     });
     
     this.socket.on('rooms:list', (rooms: Room[]) => {
-      console.log('Rooms list received', rooms);
-      store.dispatch(setRooms(rooms));
-    });
-  }
-  
-  private mockBroadcast(event: string, data: any) {
-    console.log('Broadcasting event', event, data);
-    
-    if (event === 'room:created' || event === 'room:updated') {
-      this.saveRoomsToStorage();
-    }
-    
-    if (this.broadcastChannel) {
-      try {
-        this.broadcastChannel.postMessage({
-          event,
-          payload: data,
-          sourceId: clientId
-        });
-      } catch (e) {
-        console.error('Error broadcasting message', e);
-      }
-    }
-    
-    SocketService.connectedServices.forEach(service => {
-      if (service.socket) {
-        setTimeout(() => {
-          service.socket?.emit(event, data);
-        }, 100);
+      console.log('Received rooms list from socket:', rooms);
+      if (Array.isArray(rooms) && rooms.length > 0) {
+        // Merge with local rooms to avoid losing any
+        this.mergeRooms(rooms);
       }
     });
   }
   
-  private saveRoomsToStorage() {
-    try {
-      const roomsJson = JSON.stringify(this.mockRooms);
-      localStorage.setItem('mockRooms', roomsJson);
-      console.log('Saved rooms to localStorage:', this.mockRooms);
-      
-      const storageEvent = new StorageEvent('storage', {
-        key: 'mockRooms',
-        newValue: roomsJson,
-        oldValue: null,
-        storageArea: localStorage
-      });
-      
-      window.dispatchEvent(storageEvent);
-    } catch (e) {
-      console.error('Error saving mock rooms to localStorage', e);
-    }
-  }
-  
-  private updateRoom(room: Room) {
-    const processedRoom = {
-      ...room,
-      createdAt: room.createdAt
-    };
-    
+  // Room operations
+  private addOrUpdateRoom(room: Room, shouldBroadcast = true) {
     const index = this.mockRooms.findIndex(r => r.id === room.id);
     if (index >= 0) {
-      this.mockRooms[index] = processedRoom;
+      this.mockRooms[index] = room;
     } else {
-      this.mockRooms.push(processedRoom);
+      this.mockRooms.push(room);
     }
     
     this.saveRoomsToStorage();
+    store.dispatch(addRoom(room));
     
+    if (shouldBroadcast) {
+      this.broadcast('ROOM_CREATED', room);
+    }
+  }
+  
+  private mergeRooms(rooms: Room[]) {
+    // Create a map for quick lookup
+    const existingRoomsMap = new Map(this.mockRooms.map(room => [room.id, room]));
+    
+    // Update existing rooms and add new ones
+    for (const room of rooms) {
+      if (existingRoomsMap.has(room.id)) {
+        existingRoomsMap.set(room.id, room);
+      } else {
+        existingRoomsMap.set(room.id, room);
+      }
+    }
+    
+    // Convert map back to array
+    this.mockRooms = Array.from(existingRoomsMap.values());
+    
+    // Persist to storage and update store
+    this.saveRoomsToStorage();
     store.dispatch(setRooms([...this.mockRooms]));
   }
   
+  // Public methods
   getRooms() {
-    if (!this.socket) return;
-    
     console.log('Getting rooms list', this.mockRooms);
-    this.mockBroadcast('rooms:list', this.mockRooms);
+    this.syncRoomsFromStorage();
+    store.dispatch(setRooms([...this.mockRooms]));
+    return [...this.mockRooms];
   }
 
   createRoom(room: Omit<Room, 'id' | 'createdAt'>) {
-    if (!this.socket) return;
-    
     const roomId = Math.random().toString(36).substr(2, 9);
     const createdAt = new Date().toISOString();
     
@@ -250,18 +263,14 @@ class SocketService {
     };
     
     console.log('Creating new room', newRoom);
-    
-    this.mockRooms.push(newRoom);
-    
-    this.saveRoomsToStorage();
-    
-    this.mockBroadcast('room:created', newRoom);
+    this.addOrUpdateRoom(newRoom);
     
     return roomId;
   }
 
   joinRoom(roomId: string, player: Player, password?: string) {
-    if (!this.socket) return;
+    // First sync from storage to ensure we have the latest data
+    this.syncRoomsFromStorage();
     
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) {
@@ -276,52 +285,29 @@ class SocketService {
     
     if (!room.players.some(p => p.id === player.id)) {
       room.players.push(player);
-      
-      this.updateRoom(room);
-      
-      this.mockBroadcast('player:joined', { roomId, player });
-      
-      this.mockBroadcast('room:updated', room);
+      this.addOrUpdateRoom(room);
     }
     
     return true;
   }
 
   leaveRoom(roomId: string, playerId: string) {
-    if (!this.socket) return;
-    
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
     room.players = room.players.filter(p => p.id !== playerId);
-    
-    this.updateRoom(room);
-    
-    this.mockBroadcast('player:left', { roomId, playerId });
-    
-    this.mockBroadcast('room:updated', room);
+    this.addOrUpdateRoom(room);
   }
 
   startGame(roomId: string) {
-    if (!this.socket) return;
-    
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
     room.status = 'playing';
-    
-    this.updateRoom(room);
-    
-    this.mockBroadcast('room:status', { roomId, status: 'playing' });
-    
-    this.mockBroadcast('room:updated', room);
-    
-    this.mockBroadcast('game:start', { roomId });
+    this.addOrUpdateRoom(room);
   }
 
   createTeam(roomId: string, team: Omit<Team, 'id'>) {
-    if (!this.socket) return;
-    
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
@@ -331,17 +317,12 @@ class SocketService {
     };
     
     room.teams.push(newTeam);
-    
-    this.updateRoom(room);
-    
-    this.mockBroadcast('room:updated', room);
+    this.addOrUpdateRoom(room);
     
     return newTeam.id;
   }
 
   joinTeam(roomId: string, teamId: string, playerId: string) {
-    if (!this.socket) return;
-    
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
@@ -353,16 +334,11 @@ class SocketService {
     
     if (!team.players.some(p => p.id === playerId)) {
       team.players.push(player);
-      
-      this.updateRoom(room);
-      
-      this.mockBroadcast('room:updated', room);
+      this.addOrUpdateRoom(room);
     }
   }
 
   leaveTeam(roomId: string, teamId: string, playerId: string) {
-    if (!this.socket) return;
-    
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
@@ -370,49 +346,19 @@ class SocketService {
     if (!team) return;
     
     team.players = team.players.filter(p => p.id !== playerId);
-    
-    this.updateRoom(room);
-    
-    this.mockBroadcast('room:updated', room);
+    this.addOrUpdateRoom(room);
   }
 
   forceRefreshRooms() {
-    try {
-      const savedRooms = localStorage.getItem('mockRooms');
-      if (savedRooms) {
-        const parsedRooms = JSON.parse(savedRooms);
-        console.log('Force refreshing rooms from localStorage:', parsedRooms);
-        this.mockRooms = parsedRooms;
-        
-        this.mockBroadcast('rooms:list', this.mockRooms);
-        
-        store.dispatch(setRooms([...this.mockRooms]));
-      } else {
-        console.log('No rooms found in localStorage during force refresh');
-      }
-    } catch (e) {
-      console.error('Error loading mock rooms from localStorage', e);
-    }
+    this.broadcast('FORCE_REFRESH');
+    return this.syncRoomsFromStorage();
   }
 
   syncRoomsNow() {
-    try {
-      const savedRooms = localStorage.getItem('mockRooms');
-      if (savedRooms) {
-        this.mockRooms = JSON.parse(savedRooms);
-        store.dispatch(setRooms([...this.mockRooms]));
-        console.log('Manual sync complete:', this.mockRooms);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.error('Error during manual sync', e);
-      return false;
-    }
+    return this.syncRoomsFromStorage();
   }
 
   debugRooms() {
-    console.log('Current mock rooms:', this.mockRooms);
     return [...this.mockRooms];
   }
 }

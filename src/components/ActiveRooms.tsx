@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
@@ -22,53 +23,81 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [broadcastChannel, setBroadcastChannel] = useState<BroadcastChannel | null>(null);
   
   const activeRooms = rooms.filter(room => room.status !== 'finished');
   const selectedRoom = selectedRoomId ? rooms.find(room => room.id === selectedRoomId) : null;
 
+  // Create a function to refresh the rooms list
   const refreshRoomsList = useCallback(() => {
     if (!currentUser) return;
     
     setIsRefreshing(true);
     
+    // Connect to socket if not already connected
     socketService.connect(currentUser.id);
     
-    socketService.getRooms();
+    // Force refresh rooms from localStorage and other tabs
+    const success = socketService.forceRefreshRooms();
     
-    socketService.forceRefreshRooms();
+    // Get the latest rooms list
+    const latestRooms = socketService.getRooms();
     
-    socketService.syncRoomsNow();
-    
-    console.log('Current rooms in ActiveRooms component:', rooms);
-    console.log('Current rooms in socketService:', socketService.debugRooms());
-    
-    const currentRooms = socketService.debugRooms();
-    if (currentRooms && currentRooms.length > 0) {
-      dispatch(setRooms(currentRooms));
+    // Update Redux store with the latest rooms
+    if (latestRooms.length > 0) {
+      console.log("Updating rooms in ActiveRooms component:", latestRooms);
+      dispatch(setRooms(latestRooms));
     }
     
+    // Reset the refreshing state after a delay
     setTimeout(() => {
       setIsRefreshing(false);
     }, 500);
-  }, [currentUser, dispatch, rooms]);
+    
+  }, [currentUser, dispatch]);
 
+  // Set up broadcast channel for real-time updates
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    
+    try {
+      channel = new BroadcastChannel('social_games_sync');
+      channel.onmessage = (event) => {
+        console.log('ActiveRooms received broadcast:', event.data);
+        if (event.data.action === 'ROOMS_UPDATED' || event.data.action === 'ROOM_CREATED' || event.data.action === 'FORCE_REFRESH') {
+          refreshRoomsList();
+        }
+      };
+      setBroadcastChannel(channel);
+    } catch (e) {
+      console.error('BroadcastChannel not supported in ActiveRooms', e);
+    }
+    
+    return () => {
+      if (channel) {
+        channel.close();
+      }
+    };
+  }, [refreshRoomsList]);
+  
+  // Set up polling and storage event listeners
   useEffect(() => {
     if (currentUser) {
       socketService.connect(currentUser.id);
       
+      // Initial refresh
       refreshRoomsList();
       
+      // Set up polling interval
       const interval = setInterval(() => {
         if (isOpen) {
           refreshRoomsList();
         }
       }, 3000);
       
-      setPollingInterval(interval);
-      
+      // Listen for storage events as a fallback for cross-tab communication
       const handleStorageChange = (e: StorageEvent) => {
-        if (e.key === 'mockRooms' && isOpen) {
+        if (e.key === 'social_games_rooms' && isOpen) {
           console.log('Storage change detected in ActiveRooms');
           refreshRoomsList();
         }
@@ -77,17 +106,21 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
       window.addEventListener('storage', handleStorageChange);
       
       return () => {
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-        }
+        clearInterval(interval);
         window.removeEventListener('storage', handleStorageChange);
       };
     }
   }, [currentUser, isOpen, refreshRoomsList]);
 
+  // Refresh when dialog opens
   useEffect(() => {
     if (isOpen && currentUser) {
+      // Initial load
       refreshRoomsList();
+      
+      // Also refresh after a short delay to catch any late updates
+      const timeoutId = setTimeout(refreshRoomsList, 1000);
+      return () => clearTimeout(timeoutId);
     }
   }, [isOpen, currentUser, refreshRoomsList]);
 
@@ -229,7 +262,6 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
                 <div className="space-y-3">
                   {activeRooms.map(room => {
                     const gameInfo = getGameById(room.gameId);
-                    const isHost = currentUser?.id === room.host.id;
                     const isPlayerInRoom = room.players.some(p => p.id === currentUser?.id);
                     
                     return (

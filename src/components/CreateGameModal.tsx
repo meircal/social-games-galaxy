@@ -91,11 +91,6 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
       // Set the current room in redux to ensure it's accessible
       dispatch(setCurrentRoom(completeRoom));
       
-      // Force a sync to ensure room data is available on all devices
-      setTimeout(() => {
-        socketService.forceRefreshRooms();
-      }, 200);
-      
       toast({
         title: "החדר נוצר בהצלחה",
         description: `החדר "${roomName}" נוצר בהצלחה`,
