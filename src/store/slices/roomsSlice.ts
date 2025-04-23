@@ -30,10 +30,24 @@ const roomsSlice = createSlice({
       state.rooms = action.payload;
     },
     addRoom: (state, action: PayloadAction<Room>) => {
-      state.rooms.push(action.payload);
+      // Check if room already exists to avoid duplicates
+      const existingRoomIndex = state.rooms.findIndex(room => room.id === action.payload.id);
+      if (existingRoomIndex >= 0) {
+        // Update existing room
+        state.rooms[existingRoomIndex] = action.payload;
+      } else {
+        // Add new room
+        state.rooms.push(action.payload);
+      }
     },
     setCurrentRoom: (state, action: PayloadAction<Room>) => {
       state.currentRoom = action.payload;
+      
+      // Also ensure the room is in the rooms array
+      const roomExists = state.rooms.some(room => room.id === action.payload.id);
+      if (!roomExists) {
+        state.rooms.push(action.payload);
+      }
     },
     leaveRoom: (state) => {
       state.currentRoom = null;

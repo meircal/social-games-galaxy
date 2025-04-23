@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { v4 as uuidv4 } from "@/utils/uuid";
 import { setCurrentRoom } from "@/store/slices/roomsSlice";
 import { useToast } from "@/hooks/use-toast";
 import { GameId } from "@/types/game";
@@ -77,18 +76,28 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
     const roomId = socketService.createRoom(newRoom);
     
     if (roomId) {
-      // Find the created room in the socket service
-      socketService.getRooms(); // Refresh rooms list
+      // Add the room to Redux directly to ensure it exists
+      const completeRoom = {
+        ...newRoom,
+        id: roomId,
+        createdAt: new Date()
+      };
+      
+      // Set the current room in redux to ensure it's accessible
+      dispatch(setCurrentRoom(completeRoom));
       
       toast({
         title: "החדר נוצר בהצלחה",
         description: `החדר "${roomName}" נוצר בהצלחה`,
       });
       
+      // Close the modal first
       onClose();
       
-      // Navigate to the new room
-      navigate(`/room/${roomId}`);
+      // Short delay before navigation to ensure state updates
+      setTimeout(() => {
+        navigate(`/room/${roomId}`);
+      }, 100);
     }
   };
   
@@ -159,4 +168,3 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
     </div>
   );
 };
-
