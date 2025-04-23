@@ -76,12 +76,12 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
     const roomId = socketService.createRoom(newRoom);
     
     if (roomId) {
-      // Create a complete room object with ISO string date
-      const currentDate = new Date();
+      // Create a complete room object with the current date as ISO string
+      const currentDate = new Date().toISOString();
       const completeRoom = {
         ...newRoom,
         id: roomId,
-        createdAt: currentDate.toISOString()
+        createdAt: currentDate  // Now the type accepts string
       };
       
       // Set the current room in redux to ensure it's accessible

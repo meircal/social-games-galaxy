@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 import { store } from '../store';
 import { 
@@ -150,10 +151,10 @@ class SocketService {
   }
   
   private updateRoom(room: Room) {
-    // Make sure dates are strings for serialization
+    // No need to convert Date to string, our type now accepts both
     const processedRoom = {
       ...room,
-      createdAt: room.createdAt instanceof Date ? room.createdAt.toISOString() : room.createdAt
+      createdAt: room.createdAt // Keep as is, our type now accepts both string and Date
     };
     
     const index = this.mockRooms.findIndex(r => r.id === room.id);
@@ -187,7 +188,7 @@ class SocketService {
     const newRoom: Room = {
       ...room,
       id: roomId,
-      createdAt
+      createdAt // Now our type accepts string
     };
     
     console.log('Creating new room', newRoom);

@@ -1,4 +1,3 @@
-
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Room, Player, Team } from '../../types/game';
 
@@ -30,22 +29,14 @@ const roomsSlice = createSlice({
       // Ensure all rooms have properly formatted dates
       state.rooms = action.payload.map(room => ({
         ...room,
-        createdAt: room.createdAt instanceof Date ? 
-          room.createdAt.toISOString() : 
-          typeof room.createdAt === 'string' ? 
-            room.createdAt : 
-            new Date().toISOString()
+        createdAt: room.createdAt // Keep as is, since the type now accepts both string and Date
       }));
     },
     addRoom: (state, action: PayloadAction<Room>) => {
-      // Format the createdAt as ISO string for serialization
+      // Format the createdAt correctly based on the Room type
       const roomWithSerializedDate = {
         ...action.payload,
-        createdAt: action.payload.createdAt instanceof Date ? 
-          action.payload.createdAt.toISOString() : 
-          typeof action.payload.createdAt === 'string' ? 
-            action.payload.createdAt : 
-            new Date().toISOString()
+        createdAt: action.payload.createdAt // Keep as is, since the type now accepts both string and Date
       };
       
       // Check if room already exists to avoid duplicates
@@ -59,14 +50,10 @@ const roomsSlice = createSlice({
       }
     },
     setCurrentRoom: (state, action: PayloadAction<Room>) => {
-      // Format the createdAt as ISO string for serialization
+      // Format the createdAt correctly based on the Room type
       const roomWithSerializedDate = {
         ...action.payload,
-        createdAt: action.payload.createdAt instanceof Date ? 
-          action.payload.createdAt.toISOString() : 
-          typeof action.payload.createdAt === 'string' ? 
-            action.payload.createdAt : 
-            new Date().toISOString()
+        createdAt: action.payload.createdAt // Keep as is, since the type now accepts both string and Date
       };
       
       state.currentRoom = roomWithSerializedDate;

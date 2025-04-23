@@ -1,4 +1,3 @@
-
 export type Player = {
   id: string;
   name: string;
@@ -26,7 +25,7 @@ export type Room = {
   players: Player[];
   settings: GameSettings;
   status: 'waiting' | 'playing' | 'finished';
-  createdAt: Date;
+  createdAt: Date | string;
 };
 
 export enum GameId {
