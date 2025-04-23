@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,13 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
   const navigate = useNavigate();
   
   const gameInfo = gamesInfo.find((game) => game.id === gameId);
+  
+  // Connect to socket service when component mounts
+  useEffect(() => {
+    if (currentUser) {
+      socketService.connect(currentUser.id);
+    }
+  }, [currentUser]);
   
   const handleCreateRoom = () => {
     if (!currentUser) {
@@ -69,23 +76,25 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
       status: "waiting" as const,
     };
     
-    // Connect to socket if not already connected
-    socketService.connect(currentUser.id);
-    
     // Create the room through socketService
     const roomId = socketService.createRoom(newRoom);
     
     if (roomId) {
-      // Create a complete room object with the current date as ISO string
+      // Create a complete room object
       const currentDate = new Date().toISOString();
       const completeRoom = {
         ...newRoom,
         id: roomId,
-        createdAt: currentDate  // Now the type accepts string
+        createdAt: currentDate
       };
       
       // Set the current room in redux to ensure it's accessible
       dispatch(setCurrentRoom(completeRoom));
+      
+      // Force a sync to ensure room data is available on all devices
+      setTimeout(() => {
+        socketService.forceRefreshRooms();
+      }, 200);
       
       toast({
         title: "החדר נוצר בהצלחה",

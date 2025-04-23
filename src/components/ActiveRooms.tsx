@@ -1,5 +1,4 @@
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -28,61 +27,69 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
   const activeRooms = rooms.filter(room => room.status !== 'finished');
   const selectedRoom = selectedRoomId ? rooms.find(room => room.id === selectedRoomId) : null;
 
-  // Connect to socket and request rooms when component mounts
-  useEffect(() => {
-    if (currentUser) {
-      socketService.connect(currentUser.id);
-      
-      // Initial room list refresh
-      refreshRoomsList();
-      
-      // Set up polling for room updates
-      const interval = setInterval(() => {
-        if (isOpen) {
-          socketService.forceRefreshRooms();
-        }
-      }, 5000); // Poll every 5 seconds while dialog is open
-      
-      setPollingInterval(interval);
-    }
+  const refreshRoomsList = useCallback(() => {
+    if (!currentUser) return;
     
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-    };
-  }, [currentUser, isOpen]);
-
-  // When the dialog opens/closes, refresh the rooms list
-  useEffect(() => {
-    if (isOpen && currentUser) {
-      refreshRoomsList();
-    }
-  }, [isOpen]);
-
-  const refreshRoomsList = () => {
     setIsRefreshing(true);
     
-    // Request the latest room list
+    socketService.connect(currentUser.id);
+    
     socketService.getRooms();
     
-    // Force a refresh from localStorage
     socketService.forceRefreshRooms();
     
-    // Debug the current rooms state
+    socketService.syncRoomsNow();
+    
+    console.log('Current rooms in ActiveRooms component:', rooms);
     console.log('Current rooms in socketService:', socketService.debugRooms());
     
-    // Get the rooms directly from the socketService for debugging
     const currentRooms = socketService.debugRooms();
     if (currentRooms && currentRooms.length > 0) {
       dispatch(setRooms(currentRooms));
     }
     
-    // Show indicator for a moment
     setTimeout(() => {
       setIsRefreshing(false);
     }, 500);
-  };
+  }, [currentUser, dispatch, rooms]);
+
+  useEffect(() => {
+    if (currentUser) {
+      socketService.connect(currentUser.id);
+      
+      refreshRoomsList();
+      
+      const interval = setInterval(() => {
+        if (isOpen) {
+          refreshRoomsList();
+        }
+      }, 3000);
+      
+      setPollingInterval(interval);
+      
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key === 'mockRooms' && isOpen) {
+          console.log('Storage change detected in ActiveRooms');
+          refreshRoomsList();
+        }
+      };
+      
+      window.addEventListener('storage', handleStorageChange);
+      
+      return () => {
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+        }
+        window.removeEventListener('storage', handleStorageChange);
+      };
+    }
+  }, [currentUser, isOpen, refreshRoomsList]);
+
+  useEffect(() => {
+    if (isOpen && currentUser) {
+      refreshRoomsList();
+    }
+  }, [isOpen, currentUser, refreshRoomsList]);
 
   const handleJoinRoom = (roomId: string) => {
     const room = rooms.find(r => r.id === roomId);
@@ -107,11 +114,10 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
     if (room.type === 'private') {
       setSelectedRoomId(roomId);
     } else {
-      // Join public room directly
       joinRoom(roomId);
     }
   };
-  
+
   const joinRoom = (roomId: string, providedPassword?: string) => {
     const room = rooms.find(r => r.id === roomId);
     if (!room || !currentUser) {
@@ -123,7 +129,6 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
       return;
     }
     
-    // Use socketService to join the room
     const joinSuccess = socketService.joinRoom(roomId, currentUser, providedPassword);
     
     if (!joinSuccess && room.type === 'private') {
@@ -144,7 +149,6 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
       return;
     }
     
-    // Add player to room in Redux store
     dispatch(addPlayerToRoom({ roomId, player: currentUser }));
     
     toast({
@@ -152,13 +156,12 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
       description: `הצטרפת לחדר ${room.name}`,
     });
     
-    // Reset state and navigate to room
     setSelectedRoomId(null);
     setPassword("");
     onClose();
     navigate(`/room/${roomId}`);
   };
-  
+
   const handleSubmitPassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedRoomId) {
@@ -166,7 +169,6 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
     }
   };
 
-  // If there's no active user, show a message
   if (!currentUser) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>

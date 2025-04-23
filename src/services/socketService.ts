@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 import { store } from '../store';
 import { 
@@ -11,44 +10,35 @@ import {
 } from '../store/slices/roomsSlice';
 import { Player, Room, Team } from '../types/game';
 
-// We'll be mocking the socket for now since we don't have an actual backend
-// In a real implementation, this would connect to your backend server
 const SOCKET_URL = 'http://localhost:3000';
 
-// Create a shared mockRooms array that persists between page refreshes
-// This simulates a server-side database
 let sharedMockRooms: Room[] = [];
 
-// Try to load existing rooms from localStorage
+const clientId = Math.random().toString(36).substr(2, 9);
+
 try {
   const savedRooms = localStorage.getItem('mockRooms');
   if (savedRooms) {
     sharedMockRooms = JSON.parse(savedRooms);
+    console.log('Loaded rooms from localStorage:', sharedMockRooms);
   }
 } catch (e) {
   console.error('Error loading mock rooms from localStorage', e);
 }
 
-// Generate a unique client ID for this browser session
-const clientId = Math.random().toString(36).substr(2, 9);
-
 class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
-  // Use the shared rooms array
   private mockRooms = sharedMockRooms;
-  // Track all connected services
   private static connectedServices: SocketService[] = [];
-  // Broadcast channel for cross-tab/cross-device communication
   private broadcastChannel: BroadcastChannel | null = null;
+  private storageListener: ((event: StorageEvent) => void) | null = null;
 
   connect(userId: string) {
     if (this.isConnected) return;
     
-    // Add this instance to the list of connected services
     SocketService.connectedServices.push(this);
     
-    // Create a broadcast channel for real-time cross-tab communication
     try {
       this.broadcastChannel = new BroadcastChannel('socket_events');
       this.broadcastChannel.onmessage = (event) => {
@@ -58,7 +48,21 @@ class SocketService {
       console.error('BroadcastChannel not supported', e);
     }
     
-    // Mock socket with event emitters
+    this.storageListener = (event) => {
+      if (event.key === 'mockRooms' && event.newValue) {
+        try {
+          const updatedRooms = JSON.parse(event.newValue);
+          console.log('Detected localStorage change:', updatedRooms);
+          this.mockRooms = updatedRooms;
+          store.dispatch(setRooms(updatedRooms));
+        } catch (e) {
+          console.error('Error parsing rooms from localStorage', e);
+        }
+      }
+    };
+    
+    window.addEventListener('storage', this.storageListener);
+    
     this.socket = io(SOCKET_URL, {
       query: { userId },
       autoConnect: true,
@@ -68,7 +72,6 @@ class SocketService {
       console.log('Socket connected for user', userId);
       this.isConnected = true;
       
-      // Request all rooms when connecting
       this.getRooms();
     });
 
@@ -76,16 +79,19 @@ class SocketService {
       console.log('Socket disconnected');
       this.isConnected = false;
       
-      // Remove this instance from connected services
       const index = SocketService.connectedServices.indexOf(this);
       if (index !== -1) {
         SocketService.connectedServices.splice(index, 1);
       }
       
-      // Close the broadcast channel
       if (this.broadcastChannel) {
         this.broadcastChannel.close();
         this.broadcastChannel = null;
+      }
+      
+      if (this.storageListener) {
+        window.removeEventListener('storage', this.storageListener);
+        this.storageListener = null;
       }
     });
 
@@ -98,28 +104,28 @@ class SocketService {
       this.socket = null;
       this.isConnected = false;
       
-      // Remove this instance from connected services
       const index = SocketService.connectedServices.indexOf(this);
       if (index !== -1) {
         SocketService.connectedServices.splice(index, 1);
       }
       
-      // Close the broadcast channel
       if (this.broadcastChannel) {
         this.broadcastChannel.close();
         this.broadcastChannel = null;
       }
+      
+      if (this.storageListener) {
+        window.removeEventListener('storage', this.storageListener);
+        this.storageListener = null;
+      }
     }
   }
 
-  // Handle broadcast messages from other tabs/windows
   private handleBroadcastMessage(data: { event: string; payload: any; sourceId: string }) {
-    // Ignore messages sent by this client
     if (data.sourceId === clientId) return;
     
     console.log('Received broadcast message:', data);
     
-    // Process the event as if it came from the socket
     if (this.socket) {
       this.socket.emit(data.event, data.payload);
     }
@@ -128,7 +134,6 @@ class SocketService {
   setupEventListeners() {
     if (!this.socket) return;
 
-    // Room events
     this.socket.on('player:joined', ({ roomId, player }: { roomId: string, player: Player }) => {
       store.dispatch(addPlayerToRoom({ roomId, player }));
     });
@@ -145,14 +150,12 @@ class SocketService {
       store.dispatch(updateTeamScore({ roomId, teamId, score }));
     });
     
-    // New room events for real-time synchronization
     this.socket.on('room:created', (room: Room) => {
       console.log('Room created event received', room);
       store.dispatch(addRoom(room));
     });
     
     this.socket.on('room:updated', (room: Room) => {
-      // This will handle any room updates
       this.updateRoom(room);
     });
     
@@ -162,16 +165,13 @@ class SocketService {
     });
   }
   
-  // Improved mock broadcast to all connected services
   private mockBroadcast(event: string, data: any) {
     console.log('Broadcasting event', event, data);
     
-    // Update the shared mock rooms array
     if (event === 'room:created' || event === 'room:updated') {
       this.saveRoomsToStorage();
     }
     
-    // Broadcast via BroadcastChannel for cross-tab/cross-device communication
     if (this.broadcastChannel) {
       try {
         this.broadcastChannel.postMessage({
@@ -184,7 +184,6 @@ class SocketService {
       }
     }
     
-    // Broadcast to all connected services in this tab
     SocketService.connectedServices.forEach(service => {
       if (service.socket) {
         setTimeout(() => {
@@ -194,20 +193,29 @@ class SocketService {
     });
   }
   
-  // Save rooms to localStorage to persist between page refreshes
   private saveRoomsToStorage() {
     try {
-      localStorage.setItem('mockRooms', JSON.stringify(this.mockRooms));
+      const roomsJson = JSON.stringify(this.mockRooms);
+      localStorage.setItem('mockRooms', roomsJson);
+      console.log('Saved rooms to localStorage:', this.mockRooms);
+      
+      const storageEvent = new StorageEvent('storage', {
+        key: 'mockRooms',
+        newValue: roomsJson,
+        oldValue: null,
+        storageArea: localStorage
+      });
+      
+      window.dispatchEvent(storageEvent);
     } catch (e) {
       console.error('Error saving mock rooms to localStorage', e);
     }
   }
   
   private updateRoom(room: Room) {
-    // No need to convert Date to string, our type now accepts both
     const processedRoom = {
       ...room,
-      createdAt: room.createdAt // Keep as is, our type now accepts both string and Date
+      createdAt: room.createdAt
     };
     
     const index = this.mockRooms.findIndex(r => r.id === room.id);
@@ -217,14 +225,11 @@ class SocketService {
       this.mockRooms.push(processedRoom);
     }
     
-    // Save to localStorage
     this.saveRoomsToStorage();
     
-    // Update Redux store
     store.dispatch(setRooms([...this.mockRooms]));
   }
   
-  // Room operations
   getRooms() {
     if (!this.socket) return;
     
@@ -236,56 +241,46 @@ class SocketService {
     if (!this.socket) return;
     
     const roomId = Math.random().toString(36).substr(2, 9);
-    const createdAt = new Date().toISOString(); // Store as ISO string for serialization
+    const createdAt = new Date().toISOString();
     
     const newRoom: Room = {
       ...room,
       id: roomId,
-      createdAt // Now our type accepts string
+      createdAt
     };
     
     console.log('Creating new room', newRoom);
     
-    // Add to our mock database
     this.mockRooms.push(newRoom);
     
-    // Save to localStorage
     this.saveRoomsToStorage();
     
-    // Broadcast to all clients (including ourselves)
     this.mockBroadcast('room:created', newRoom);
     
-    // Return the room ID so the creator can join it
     return roomId;
   }
 
   joinRoom(roomId: string, player: Player, password?: string) {
     if (!this.socket) return;
     
-    // Find the room in our mock database
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) {
       console.log('Room not found', roomId);
       return false;
     }
     
-    // Check password if it's a private room
     if (room.type === 'private' && room.password !== password) {
       console.log('Wrong password');
       return false;
     }
     
-    // Add player to room if not already in
     if (!room.players.some(p => p.id === player.id)) {
       room.players.push(player);
       
-      // Update the room in our mock database
       this.updateRoom(room);
       
-      // Broadcast player joined event
       this.mockBroadcast('player:joined', { roomId, player });
       
-      // Broadcast room update
       this.mockBroadcast('room:updated', room);
     }
     
@@ -295,67 +290,50 @@ class SocketService {
   leaveRoom(roomId: string, playerId: string) {
     if (!this.socket) return;
     
-    // Find the room in our mock database
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
-    // Remove player from room
     room.players = room.players.filter(p => p.id !== playerId);
     
-    // Update the room in our mock database
     this.updateRoom(room);
     
-    // Broadcast player left event
     this.mockBroadcast('player:left', { roomId, playerId });
     
-    // Broadcast room update
     this.mockBroadcast('room:updated', room);
   }
 
   startGame(roomId: string) {
     if (!this.socket) return;
     
-    // Find the room in our mock database
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
-    // Update room status
     room.status = 'playing';
     
-    // Update the room in our mock database
     this.updateRoom(room);
     
-    // Broadcast room status change
     this.mockBroadcast('room:status', { roomId, status: 'playing' });
     
-    // Broadcast room update
     this.mockBroadcast('room:updated', room);
     
-    // Broadcast game start event
     this.mockBroadcast('game:start', { roomId });
   }
 
-  // Team operations
   createTeam(roomId: string, team: Omit<Team, 'id'>) {
     if (!this.socket) return;
     
-    // Find the room in our mock database
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
-    // Create a new team
     const newTeam: Team = {
       ...team,
       id: Math.random().toString(36).substr(2, 9)
     };
     
-    // Add team to room
     room.teams.push(newTeam);
     
-    // Update the room in our mock database
     this.updateRoom(room);
     
-    // Broadcast room update
     this.mockBroadcast('room:updated', room);
     
     return newTeam.id;
@@ -364,26 +342,20 @@ class SocketService {
   joinTeam(roomId: string, teamId: string, playerId: string) {
     if (!this.socket) return;
     
-    // Find the room in our mock database
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
-    // Find the team
     const team = room.teams.find(t => t.id === teamId);
     if (!team) return;
     
-    // Find the player
     const player = room.players.find(p => p.id === playerId);
     if (!player) return;
     
-    // Add player to team if not already in
     if (!team.players.some(p => p.id === playerId)) {
       team.players.push(player);
       
-      // Update the room in our mock database
       this.updateRoom(room);
       
-      // Broadcast room update
       this.mockBroadcast('room:updated', room);
     }
   }
@@ -391,44 +363,59 @@ class SocketService {
   leaveTeam(roomId: string, teamId: string, playerId: string) {
     if (!this.socket) return;
     
-    // Find the room in our mock database
     const room = this.mockRooms.find(r => r.id === roomId);
     if (!room) return;
     
-    // Find the team
     const team = room.teams.find(t => t.id === teamId);
     if (!team) return;
     
-    // Remove player from team
     team.players = team.players.filter(p => p.id !== playerId);
     
-    // Update the room in our mock database
     this.updateRoom(room);
     
-    // Broadcast room update
     this.mockBroadcast('room:updated', room);
   }
 
-  // Helper method to debug room state
-  debugRooms() {
-    console.log('Current mock rooms:', this.mockRooms);
-    return [...this.mockRooms];
-  }
-  
-  // Force refresh of rooms from localStorage
   forceRefreshRooms() {
     try {
       const savedRooms = localStorage.getItem('mockRooms');
       if (savedRooms) {
-        this.mockRooms = JSON.parse(savedRooms);
+        const parsedRooms = JSON.parse(savedRooms);
+        console.log('Force refreshing rooms from localStorage:', parsedRooms);
+        this.mockRooms = parsedRooms;
+        
         this.mockBroadcast('rooms:list', this.mockRooms);
+        
+        store.dispatch(setRooms([...this.mockRooms]));
+      } else {
+        console.log('No rooms found in localStorage during force refresh');
       }
     } catch (e) {
       console.error('Error loading mock rooms from localStorage', e);
     }
   }
+
+  syncRoomsNow() {
+    try {
+      const savedRooms = localStorage.getItem('mockRooms');
+      if (savedRooms) {
+        this.mockRooms = JSON.parse(savedRooms);
+        store.dispatch(setRooms([...this.mockRooms]));
+        console.log('Manual sync complete:', this.mockRooms);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Error during manual sync', e);
+      return false;
+    }
+  }
+
+  debugRooms() {
+    console.log('Current mock rooms:', this.mockRooms);
+    return [...this.mockRooms];
+  }
 }
 
-// Create a singleton instance
 const socketService = new SocketService();
 export default socketService;
