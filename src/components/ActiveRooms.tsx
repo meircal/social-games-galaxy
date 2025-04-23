@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getGameById } from "@/data/gameData";
-import { Users, Play, Lock } from "lucide-react";
+import { Users, Play, Lock, RefreshCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import socketService from "@/services/socketService";
-import { addPlayerToRoom } from "@/store/slices/roomsSlice";
+import { addPlayerToRoom, setRooms } from "@/store/slices/roomsSlice";
 
 const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { rooms } = useAppSelector((state) => state.rooms);
@@ -23,6 +23,7 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
   const dispatch = useAppDispatch();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const activeRooms = rooms.filter(room => room.status !== 'finished');
   const selectedRoom = selectedRoomId ? rooms.find(room => room.id === selectedRoomId) : null;
@@ -32,13 +33,40 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
     if (currentUser) {
       socketService.connect(currentUser.id);
       // Request the latest room list
-      socketService.getRooms();
+      refreshRoomsList();
     }
   }, [currentUser]);
 
+  const refreshRoomsList = () => {
+    setIsRefreshing(true);
+    // Request the latest room list
+    socketService.getRooms();
+    
+    // Debug the current rooms state
+    console.log('Current rooms in socketService:', socketService.debugRooms());
+    
+    // Get the rooms directly from the socketService for debugging
+    const currentRooms = socketService.debugRooms();
+    if (currentRooms && currentRooms.length > 0) {
+      dispatch(setRooms(currentRooms));
+    }
+    
+    // Show indicator for a moment
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 500);
+  };
+
   const handleJoinRoom = (roomId: string) => {
     const room = rooms.find(r => r.id === roomId);
-    if (!room) return;
+    if (!room) {
+      toast({
+        title: "שגיאה",
+        description: "החדר לא נמצא",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!currentUser) {
       toast({
@@ -59,7 +87,14 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
   
   const joinRoom = (roomId: string, providedPassword?: string) => {
     const room = rooms.find(r => r.id === roomId);
-    if (!room || !currentUser) return;
+    if (!room || !currentUser) {
+      toast({
+        title: "שגיאה",
+        description: "החדר לא נמצא",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Use socketService to join the room
     const joinSuccess = socketService.joinRoom(roomId, currentUser, providedPassword);
@@ -68,6 +103,15 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
       toast({
         title: "שגיאה",
         description: "סיסמה שגויה",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!joinSuccess) {
+      toast({
+        title: "שגיאה",
+        description: "לא ניתן להצטרף לחדר",
         variant: "destructive",
       });
       return;

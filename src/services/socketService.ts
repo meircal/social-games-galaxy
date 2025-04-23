@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 import { store } from '../store';
 import { 
@@ -15,23 +14,42 @@ import { Player, Room, Team } from '../types/game';
 // In a real implementation, this would connect to your backend server
 const SOCKET_URL = 'http://localhost:3000';
 
+// Create a shared mockRooms array that persists between page refreshes
+// This simulates a server-side database
+let sharedMockRooms: Room[] = [];
+
+// Try to load existing rooms from localStorage
+try {
+  const savedRooms = localStorage.getItem('mockRooms');
+  if (savedRooms) {
+    sharedMockRooms = JSON.parse(savedRooms);
+  }
+} catch (e) {
+  console.error('Error loading mock rooms from localStorage', e);
+}
+
 class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
-  private mockRooms: Room[] = [];
+  // Use the shared rooms array
+  private mockRooms = sharedMockRooms;
+  // Track all connected sockets to simulate broadcasting
+  private static connectedServices: SocketService[] = [];
 
   connect(userId: string) {
     if (this.isConnected) return;
     
+    // Add this instance to the list of connected services
+    SocketService.connectedServices.push(this);
+    
     // Mock socket with event emitters
-    // In a real app, this would connect to your server
     this.socket = io(SOCKET_URL, {
       query: { userId },
       autoConnect: true,
     });
 
     this.socket.on('connect', () => {
-      console.log('Socket connected');
+      console.log('Socket connected for user', userId);
       this.isConnected = true;
       
       // Request all rooms when connecting
@@ -41,6 +59,12 @@ class SocketService {
     this.socket.on('disconnect', () => {
       console.log('Socket disconnected');
       this.isConnected = false;
+      
+      // Remove this instance from connected services
+      const index = SocketService.connectedServices.indexOf(this);
+      if (index !== -1) {
+        SocketService.connectedServices.splice(index, 1);
+      }
     });
 
     this.setupEventListeners();
@@ -51,6 +75,12 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
+      
+      // Remove this instance from connected services
+      const index = SocketService.connectedServices.indexOf(this);
+      if (index !== -1) {
+        SocketService.connectedServices.splice(index, 1);
+      }
     }
   }
 
@@ -76,6 +106,7 @@ class SocketService {
     
     // New room events for real-time synchronization
     this.socket.on('room:created', (room: Room) => {
+      console.log('Room created event received', room);
       store.dispatch(addRoom(room));
     });
     
@@ -85,30 +116,55 @@ class SocketService {
     });
     
     this.socket.on('rooms:list', (rooms: Room[]) => {
+      console.log('Rooms list received', rooms);
       store.dispatch(setRooms(rooms));
     });
   }
   
-  // Mock methods to simulate real-time room management
+  // Improved mock broadcast to all connected services
   private mockBroadcast(event: string, data: any) {
-    if (!this.socket) return;
+    console.log('Broadcasting event', event, data);
     
-    // In a real app, the server would broadcast to all clients
-    // Here we're simulating that broadcast by emitting back to ourselves
-    setTimeout(() => {
-      if (this.socket) {
-        this.socket.emit(event, data);
+    // Update the shared mock rooms array
+    if (event === 'room:created' || event === 'room:updated') {
+      this.saveRoomsToStorage();
+    }
+    
+    // Broadcast to all connected services
+    SocketService.connectedServices.forEach(service => {
+      if (service.socket) {
+        setTimeout(() => {
+          service.socket?.emit(event, data);
+        }, 100);
       }
-    }, 100);
+    });
+  }
+  
+  // Save rooms to localStorage to persist between page refreshes
+  private saveRoomsToStorage() {
+    try {
+      localStorage.setItem('mockRooms', JSON.stringify(this.mockRooms));
+    } catch (e) {
+      console.error('Error saving mock rooms to localStorage', e);
+    }
   }
   
   private updateRoom(room: Room) {
+    // Make sure dates are strings for serialization
+    const processedRoom = {
+      ...room,
+      createdAt: room.createdAt instanceof Date ? room.createdAt.toISOString() : room.createdAt
+    };
+    
     const index = this.mockRooms.findIndex(r => r.id === room.id);
     if (index >= 0) {
-      this.mockRooms[index] = room;
+      this.mockRooms[index] = processedRoom;
     } else {
-      this.mockRooms.push(room);
+      this.mockRooms.push(processedRoom);
     }
+    
+    // Save to localStorage
+    this.saveRoomsToStorage();
     
     // Update Redux store
     store.dispatch(setRooms([...this.mockRooms]));
@@ -118,28 +174,35 @@ class SocketService {
   getRooms() {
     if (!this.socket) return;
     
-    // In a real app, this would request rooms from the server
-    // Here we're just sending our mock rooms back
+    console.log('Getting rooms list', this.mockRooms);
     this.mockBroadcast('rooms:list', this.mockRooms);
   }
 
   createRoom(room: Omit<Room, 'id' | 'createdAt'>) {
     if (!this.socket) return;
     
+    const roomId = Math.random().toString(36).substr(2, 9);
+    const createdAt = new Date().toISOString(); // Store as ISO string for serialization
+    
     const newRoom: Room = {
       ...room,
-      id: Math.random().toString(36).substr(2, 9),
-      createdAt: new Date()
+      id: roomId,
+      createdAt
     };
+    
+    console.log('Creating new room', newRoom);
     
     // Add to our mock database
     this.mockRooms.push(newRoom);
+    
+    // Save to localStorage
+    this.saveRoomsToStorage();
     
     // Broadcast to all clients (including ourselves)
     this.mockBroadcast('room:created', newRoom);
     
     // Return the room ID so the creator can join it
-    return newRoom.id;
+    return roomId;
   }
 
   joinRoom(roomId: string, player: Player, password?: string) {
@@ -147,7 +210,10 @@ class SocketService {
     
     // Find the room in our mock database
     const room = this.mockRooms.find(r => r.id === roomId);
-    if (!room) return;
+    if (!room) {
+      console.log('Room not found', roomId);
+      return false;
+    }
     
     // Check password if it's a private room
     if (room.type === 'private' && room.password !== password) {
@@ -287,6 +353,12 @@ class SocketService {
     
     // Broadcast room update
     this.mockBroadcast('room:updated', room);
+  }
+
+  // Helper method to debug room state
+  debugRooms() {
+    console.log('Current mock rooms:', this.mockRooms);
+    return [...this.mockRooms];
   }
 }
 

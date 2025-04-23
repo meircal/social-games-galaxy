@@ -76,11 +76,12 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
     const roomId = socketService.createRoom(newRoom);
     
     if (roomId) {
-      // Add the room to Redux directly to ensure it exists
+      // Create a complete room object with ISO string date
+      const currentDate = new Date();
       const completeRoom = {
         ...newRoom,
         id: roomId,
-        createdAt: new Date()
+        createdAt: currentDate.toISOString()
       };
       
       // Set the current room in redux to ensure it's accessible

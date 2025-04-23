@@ -27,26 +27,54 @@ const roomsSlice = createSlice({
       state.error = action.payload;
     },
     setRooms: (state, action: PayloadAction<Room[]>) => {
-      state.rooms = action.payload;
+      // Ensure all rooms have properly formatted dates
+      state.rooms = action.payload.map(room => ({
+        ...room,
+        createdAt: room.createdAt instanceof Date ? 
+          room.createdAt.toISOString() : 
+          typeof room.createdAt === 'string' ? 
+            room.createdAt : 
+            new Date().toISOString()
+      }));
     },
     addRoom: (state, action: PayloadAction<Room>) => {
+      // Format the createdAt as ISO string for serialization
+      const roomWithSerializedDate = {
+        ...action.payload,
+        createdAt: action.payload.createdAt instanceof Date ? 
+          action.payload.createdAt.toISOString() : 
+          typeof action.payload.createdAt === 'string' ? 
+            action.payload.createdAt : 
+            new Date().toISOString()
+      };
+      
       // Check if room already exists to avoid duplicates
       const existingRoomIndex = state.rooms.findIndex(room => room.id === action.payload.id);
       if (existingRoomIndex >= 0) {
         // Update existing room
-        state.rooms[existingRoomIndex] = action.payload;
+        state.rooms[existingRoomIndex] = roomWithSerializedDate;
       } else {
         // Add new room
-        state.rooms.push(action.payload);
+        state.rooms.push(roomWithSerializedDate);
       }
     },
     setCurrentRoom: (state, action: PayloadAction<Room>) => {
-      state.currentRoom = action.payload;
+      // Format the createdAt as ISO string for serialization
+      const roomWithSerializedDate = {
+        ...action.payload,
+        createdAt: action.payload.createdAt instanceof Date ? 
+          action.payload.createdAt.toISOString() : 
+          typeof action.payload.createdAt === 'string' ? 
+            action.payload.createdAt : 
+            new Date().toISOString()
+      };
+      
+      state.currentRoom = roomWithSerializedDate;
       
       // Also ensure the room is in the rooms array
       const roomExists = state.rooms.some(room => room.id === action.payload.id);
       if (!roomExists) {
-        state.rooms.push(action.payload);
+        state.rooms.push(roomWithSerializedDate);
       }
     },
     leaveRoom: (state) => {
@@ -66,10 +94,16 @@ const roomsSlice = createSlice({
       const { roomId, player } = action.payload;
       const room = state.rooms.find(r => r.id === roomId);
       if (room) {
-        room.players.push(player);
+        // Check if player is already in the room to avoid duplicates
+        if (!room.players.some(p => p.id === player.id)) {
+          room.players.push(player);
+        }
       }
       if (state.currentRoom?.id === roomId) {
-        state.currentRoom.players.push(player);
+        // Check if player is already in the room to avoid duplicates
+        if (!state.currentRoom.players.some(p => p.id === player.id)) {
+          state.currentRoom.players.push(player);
+        }
       }
     },
     removePlayerFromRoom: (state, action: PayloadAction<{ roomId: string; playerId: string }>) => {
