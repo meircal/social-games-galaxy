@@ -1,5 +1,5 @@
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -10,7 +10,6 @@ import { getGameById } from "@/data/gameData";
 import { Users, Play, Lock, RefreshCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import socketService from "@/services/socketService";
 import { addPlayerToRoom, setRooms } from "@/store/slices/roomsSlice";
@@ -24,6 +23,7 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   
   const activeRooms = rooms.filter(room => room.status !== 'finished');
   const selectedRoom = selectedRoomId ? rooms.find(room => room.id === selectedRoomId) : null;
@@ -32,15 +32,42 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
   useEffect(() => {
     if (currentUser) {
       socketService.connect(currentUser.id);
-      // Request the latest room list
+      
+      // Initial room list refresh
+      refreshRoomsList();
+      
+      // Set up polling for room updates
+      const interval = setInterval(() => {
+        if (isOpen) {
+          socketService.forceRefreshRooms();
+        }
+      }, 5000); // Poll every 5 seconds while dialog is open
+      
+      setPollingInterval(interval);
+    }
+    
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [currentUser, isOpen]);
+
+  // When the dialog opens/closes, refresh the rooms list
+  useEffect(() => {
+    if (isOpen && currentUser) {
       refreshRoomsList();
     }
-  }, [currentUser]);
+  }, [isOpen]);
 
   const refreshRoomsList = () => {
     setIsRefreshing(true);
+    
     // Request the latest room list
     socketService.getRooms();
+    
+    // Force a refresh from localStorage
+    socketService.forceRefreshRooms();
     
     // Debug the current rooms state
     console.log('Current rooms in socketService:', socketService.debugRooms());
@@ -190,6 +217,12 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
         ) : (
           <>
             <ScrollArea className="flex-1 pr-4">
+              {isRefreshing && (
+                <div className="flex justify-center py-2">
+                  <RefreshCcw className="w-5 h-5 animate-spin text-primary" />
+                </div>
+              )}
+              
               {activeRooms.length > 0 ? (
                 <div className="space-y-3">
                   {activeRooms.map(room => {
@@ -242,15 +275,14 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
             <div className="pt-4 flex justify-between">
               <Button 
                 variant="secondary" 
-                onClick={() => {
-                  // Refresh room list
-                  socketService.getRooms();
-                  toast({
-                    title: "רשימת החדרים עודכנה",
-                    description: "רשימת החדרים הפעילים עודכנה"
-                  });
-                }}
+                onClick={refreshRoomsList}
+                disabled={isRefreshing}
               >
+                {isRefreshing ? (
+                  <RefreshCcw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-4 w-4 mr-2" />
+                )}
                 רענן רשימה
               </Button>
               <Button variant="outline" onClick={onClose}>סגור</Button>
@@ -263,4 +295,3 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
 };
 
 export default ActiveRooms;
-

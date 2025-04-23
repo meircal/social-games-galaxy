@@ -29,19 +29,34 @@ try {
   console.error('Error loading mock rooms from localStorage', e);
 }
 
+// Generate a unique client ID for this browser session
+const clientId = Math.random().toString(36).substr(2, 9);
+
 class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
   // Use the shared rooms array
   private mockRooms = sharedMockRooms;
-  // Track all connected sockets to simulate broadcasting
+  // Track all connected services
   private static connectedServices: SocketService[] = [];
+  // Broadcast channel for cross-tab/cross-device communication
+  private broadcastChannel: BroadcastChannel | null = null;
 
   connect(userId: string) {
     if (this.isConnected) return;
     
     // Add this instance to the list of connected services
     SocketService.connectedServices.push(this);
+    
+    // Create a broadcast channel for real-time cross-tab communication
+    try {
+      this.broadcastChannel = new BroadcastChannel('socket_events');
+      this.broadcastChannel.onmessage = (event) => {
+        this.handleBroadcastMessage(event.data);
+      };
+    } catch (e) {
+      console.error('BroadcastChannel not supported', e);
+    }
     
     // Mock socket with event emitters
     this.socket = io(SOCKET_URL, {
@@ -66,6 +81,12 @@ class SocketService {
       if (index !== -1) {
         SocketService.connectedServices.splice(index, 1);
       }
+      
+      // Close the broadcast channel
+      if (this.broadcastChannel) {
+        this.broadcastChannel.close();
+        this.broadcastChannel = null;
+      }
     });
 
     this.setupEventListeners();
@@ -82,6 +103,25 @@ class SocketService {
       if (index !== -1) {
         SocketService.connectedServices.splice(index, 1);
       }
+      
+      // Close the broadcast channel
+      if (this.broadcastChannel) {
+        this.broadcastChannel.close();
+        this.broadcastChannel = null;
+      }
+    }
+  }
+
+  // Handle broadcast messages from other tabs/windows
+  private handleBroadcastMessage(data: { event: string; payload: any; sourceId: string }) {
+    // Ignore messages sent by this client
+    if (data.sourceId === clientId) return;
+    
+    console.log('Received broadcast message:', data);
+    
+    // Process the event as if it came from the socket
+    if (this.socket) {
+      this.socket.emit(data.event, data.payload);
     }
   }
 
@@ -131,7 +171,20 @@ class SocketService {
       this.saveRoomsToStorage();
     }
     
-    // Broadcast to all connected services
+    // Broadcast via BroadcastChannel for cross-tab/cross-device communication
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({
+          event,
+          payload: data,
+          sourceId: clientId
+        });
+      } catch (e) {
+        console.error('Error broadcasting message', e);
+      }
+    }
+    
+    // Broadcast to all connected services in this tab
     SocketService.connectedServices.forEach(service => {
       if (service.socket) {
         setTimeout(() => {
@@ -360,6 +413,19 @@ class SocketService {
   debugRooms() {
     console.log('Current mock rooms:', this.mockRooms);
     return [...this.mockRooms];
+  }
+  
+  // Force refresh of rooms from localStorage
+  forceRefreshRooms() {
+    try {
+      const savedRooms = localStorage.getItem('mockRooms');
+      if (savedRooms) {
+        this.mockRooms = JSON.parse(savedRooms);
+        this.mockBroadcast('rooms:list', this.mockRooms);
+      }
+    } catch (e) {
+      console.error('Error loading mock rooms from localStorage', e);
+    }
   }
 }
 
