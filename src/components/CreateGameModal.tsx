@@ -72,7 +72,7 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
         name: roomName.trim(),
         gameId: gameId as GameId,
         type: roomType,
-        password: roomType === "private" ? password : undefined,
+        password: roomType === "private" ? password : null, // Use null instead of undefined
         host: currentUser,
         teams: [],
         players: [currentUser],
