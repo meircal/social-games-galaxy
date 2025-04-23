@@ -6,11 +6,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { v4 as uuidv4 } from "@/utils/uuid";
-import { addRoom, setCurrentRoom } from "@/store/slices/roomsSlice";
+import { setCurrentRoom } from "@/store/slices/roomsSlice";
 import { useToast } from "@/hooks/use-toast";
 import { GameId } from "@/types/game";
 import { gamesInfo } from "@/data/gameData";
 import { Lock, Globe } from "lucide-react";
+import socketService from "@/services/socketService";
+import { useNavigate } from "react-router-dom";
 
 interface CreateGameModalProps {
   gameId: string;
@@ -24,6 +26,7 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
   const { currentUser } = useAppSelector((state) => state.user);
   const dispatch = useAppDispatch();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   const gameInfo = gamesInfo.find((game) => game.id === gameId);
   
@@ -56,7 +59,6 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
     }
     
     const newRoom = {
-      id: uuidv4(),
       name: roomName.trim(),
       gameId: gameId as GameId,
       type: roomType,
@@ -66,18 +68,28 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
       players: [currentUser],
       settings: {},
       status: "waiting" as const,
-      createdAt: new Date(),
     };
     
-    dispatch(addRoom(newRoom));
-    dispatch(setCurrentRoom(newRoom));
+    // Connect to socket if not already connected
+    socketService.connect(currentUser.id);
     
-    toast({
-      title: "החדר נוצר בהצלחה",
-      description: `החדר "${roomName}" נוצר בהצלחה`,
-    });
+    // Create the room through socketService
+    const roomId = socketService.createRoom(newRoom);
     
-    onClose();
+    if (roomId) {
+      // Find the created room in the socket service
+      socketService.getRooms(); // Refresh rooms list
+      
+      toast({
+        title: "החדר נוצר בהצלחה",
+        description: `החדר "${roomName}" נוצר בהצלחה`,
+      });
+      
+      onClose();
+      
+      // Navigate to the new room
+      navigate(`/room/${roomId}`);
+    }
   };
   
   return (
@@ -147,3 +159,4 @@ export const CreateGameModal = ({ gameId, onClose }: CreateGameModalProps) => {
     </div>
   );
 };
+

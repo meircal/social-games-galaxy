@@ -1,7 +1,7 @@
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAppSelector } from "@/store/hooks";
+import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,17 +12,29 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import socketService from "@/services/socketService";
+import { addPlayerToRoom } from "@/store/slices/roomsSlice";
 
 const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { rooms } = useAppSelector((state) => state.rooms);
   const { currentUser } = useAppSelector((state) => state.user);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const dispatch = useAppDispatch();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   
   const activeRooms = rooms.filter(room => room.status !== 'finished');
   const selectedRoom = selectedRoomId ? rooms.find(room => room.id === selectedRoomId) : null;
+
+  // Connect to socket and request rooms when component mounts
+  useEffect(() => {
+    if (currentUser) {
+      socketService.connect(currentUser.id);
+      // Request the latest room list
+      socketService.getRooms();
+    }
+  }, [currentUser]);
 
   const handleJoinRoom = (roomId: string) => {
     const room = rooms.find(r => r.id === roomId);
@@ -49,7 +61,10 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
     const room = rooms.find(r => r.id === roomId);
     if (!room || !currentUser) return;
     
-    if (room.type === 'private' && room.password !== providedPassword) {
+    // Use socketService to join the room
+    const joinSuccess = socketService.joinRoom(roomId, currentUser, providedPassword);
+    
+    if (!joinSuccess && room.type === 'private') {
       toast({
         title: "שגיאה",
         description: "סיסמה שגויה",
@@ -58,15 +73,13 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
       return;
     }
     
-    // Check if player is already in the room
-    if (!room.players.some(p => p.id === currentUser.id)) {
-      // In a real app, this would be done through a server action
-      // Here we're just simulating joining
-      toast({
-        title: "הצטרפת לחדר",
-        description: `הצטרפת לחדר ${room.name}`,
-      });
-    }
+    // Add player to room in Redux store
+    dispatch(addPlayerToRoom({ roomId, player: currentUser }));
+    
+    toast({
+      title: "הצטרפת לחדר",
+      description: `הצטרפת לחדר ${room.name}`,
+    });
     
     // Reset state and navigate to room
     setSelectedRoomId(null);
@@ -81,6 +94,23 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
       joinRoom(selectedRoomId, password);
     }
   };
+
+  // If there's no active user, show a message
+  if (!currentUser) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-center">חדרים פעילים</DialogTitle>
+          </DialogHeader>
+          <div className="text-center py-6">
+            <p className="mb-4">עליך להתחבר כדי לראות חדרים פעילים</p>
+            <Button onClick={onClose}>סגור</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -121,6 +151,7 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
                   {activeRooms.map(room => {
                     const gameInfo = getGameById(room.gameId);
                     const isHost = currentUser?.id === room.host.id;
+                    const isPlayerInRoom = room.players.some(p => p.id === currentUser?.id);
                     
                     return (
                       <Card key={room.id} className="hover:bg-accent/10 transition-colors">
@@ -146,9 +177,10 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
                               variant="outline" 
                               size="sm"
                               onClick={() => handleJoinRoom(room.id)}
+                              disabled={room.status === 'playing' && !isPlayerInRoom}
                             >
                               <Play className="h-3.5 w-3.5 mr-1" />
-                              {isHost ? 'חזור לחדר' : 'הצטרף'}
+                              {isPlayerInRoom ? 'חזור לחדר' : 'הצטרף'}
                             </Button>
                           </div>
                         </CardContent>
@@ -163,7 +195,20 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
                 </div>
               )}
             </ScrollArea>
-            <div className="pt-4 flex justify-end">
+            <div className="pt-4 flex justify-between">
+              <Button 
+                variant="secondary" 
+                onClick={() => {
+                  // Refresh room list
+                  socketService.getRooms();
+                  toast({
+                    title: "רשימת החדרים עודכנה",
+                    description: "רשימת החדרים הפעילים עודכנה"
+                  });
+                }}
+              >
+                רענן רשימה
+              </Button>
               <Button variant="outline" onClick={onClose}>סגור</Button>
             </div>
           </>
@@ -174,3 +219,4 @@ const ActiveRooms = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
 };
 
 export default ActiveRooms;
+

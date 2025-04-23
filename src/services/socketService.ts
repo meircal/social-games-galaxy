@@ -5,7 +5,9 @@ import {
   addPlayerToRoom, 
   removePlayerFromRoom, 
   updateRoomStatus, 
-  updateTeamScore 
+  updateTeamScore,
+  addRoom,
+  setRooms
 } from '../store/slices/roomsSlice';
 import { Player, Room, Team } from '../types/game';
 
@@ -16,6 +18,7 @@ const SOCKET_URL = 'http://localhost:3000';
 class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
+  private mockRooms: Room[] = [];
 
   connect(userId: string) {
     if (this.isConnected) return;
@@ -30,6 +33,9 @@ class SocketService {
     this.socket.on('connect', () => {
       console.log('Socket connected');
       this.isConnected = true;
+      
+      // Request all rooms when connecting
+      this.getRooms();
     });
 
     this.socket.on('disconnect', () => {
@@ -67,49 +73,221 @@ class SocketService {
     this.socket.on('team:score', ({ roomId, teamId, score }: { roomId: string, teamId: string, score: number }) => {
       store.dispatch(updateTeamScore({ roomId, teamId, score }));
     });
-
-    // Game specific events will be added based on the current game
+    
+    // New room events for real-time synchronization
+    this.socket.on('room:created', (room: Room) => {
+      store.dispatch(addRoom(room));
+    });
+    
+    this.socket.on('room:updated', (room: Room) => {
+      // This will handle any room updates
+      this.updateRoom(room);
+    });
+    
+    this.socket.on('rooms:list', (rooms: Room[]) => {
+      store.dispatch(setRooms(rooms));
+    });
+  }
+  
+  // Mock methods to simulate real-time room management
+  private mockBroadcast(event: string, data: any) {
+    if (!this.socket) return;
+    
+    // In a real app, the server would broadcast to all clients
+    // Here we're simulating that broadcast by emitting back to ourselves
+    setTimeout(() => {
+      if (this.socket) {
+        this.socket.emit(event, data);
+      }
+    }, 100);
+  }
+  
+  private updateRoom(room: Room) {
+    const index = this.mockRooms.findIndex(r => r.id === room.id);
+    if (index >= 0) {
+      this.mockRooms[index] = room;
+    } else {
+      this.mockRooms.push(room);
+    }
+    
+    // Update Redux store
+    store.dispatch(setRooms([...this.mockRooms]));
+  }
+  
+  // Room operations
+  getRooms() {
+    if (!this.socket) return;
+    
+    // In a real app, this would request rooms from the server
+    // Here we're just sending our mock rooms back
+    this.mockBroadcast('rooms:list', this.mockRooms);
   }
 
-  // Room operations
   createRoom(room: Omit<Room, 'id' | 'createdAt'>) {
     if (!this.socket) return;
-    this.socket.emit('room:create', room);
+    
+    const newRoom: Room = {
+      ...room,
+      id: Math.random().toString(36).substr(2, 9),
+      createdAt: new Date()
+    };
+    
+    // Add to our mock database
+    this.mockRooms.push(newRoom);
+    
+    // Broadcast to all clients (including ourselves)
+    this.mockBroadcast('room:created', newRoom);
+    
+    // Return the room ID so the creator can join it
+    return newRoom.id;
   }
 
   joinRoom(roomId: string, player: Player, password?: string) {
     if (!this.socket) return;
-    this.socket.emit('room:join', { roomId, player, password });
+    
+    // Find the room in our mock database
+    const room = this.mockRooms.find(r => r.id === roomId);
+    if (!room) return;
+    
+    // Check password if it's a private room
+    if (room.type === 'private' && room.password !== password) {
+      console.log('Wrong password');
+      return false;
+    }
+    
+    // Add player to room if not already in
+    if (!room.players.some(p => p.id === player.id)) {
+      room.players.push(player);
+      
+      // Update the room in our mock database
+      this.updateRoom(room);
+      
+      // Broadcast player joined event
+      this.mockBroadcast('player:joined', { roomId, player });
+      
+      // Broadcast room update
+      this.mockBroadcast('room:updated', room);
+    }
+    
+    return true;
   }
 
   leaveRoom(roomId: string, playerId: string) {
     if (!this.socket) return;
-    this.socket.emit('room:leave', { roomId, playerId });
+    
+    // Find the room in our mock database
+    const room = this.mockRooms.find(r => r.id === roomId);
+    if (!room) return;
+    
+    // Remove player from room
+    room.players = room.players.filter(p => p.id !== playerId);
+    
+    // Update the room in our mock database
+    this.updateRoom(room);
+    
+    // Broadcast player left event
+    this.mockBroadcast('player:left', { roomId, playerId });
+    
+    // Broadcast room update
+    this.mockBroadcast('room:updated', room);
   }
 
   startGame(roomId: string) {
     if (!this.socket) return;
-    this.socket.emit('game:start', { roomId });
+    
+    // Find the room in our mock database
+    const room = this.mockRooms.find(r => r.id === roomId);
+    if (!room) return;
+    
+    // Update room status
+    room.status = 'playing';
+    
+    // Update the room in our mock database
+    this.updateRoom(room);
+    
+    // Broadcast room status change
+    this.mockBroadcast('room:status', { roomId, status: 'playing' });
+    
+    // Broadcast room update
+    this.mockBroadcast('room:updated', room);
+    
+    // Broadcast game start event
+    this.mockBroadcast('game:start', { roomId });
   }
 
   // Team operations
   createTeam(roomId: string, team: Omit<Team, 'id'>) {
     if (!this.socket) return;
-    this.socket.emit('team:create', { roomId, team });
+    
+    // Find the room in our mock database
+    const room = this.mockRooms.find(r => r.id === roomId);
+    if (!room) return;
+    
+    // Create a new team
+    const newTeam: Team = {
+      ...team,
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    
+    // Add team to room
+    room.teams.push(newTeam);
+    
+    // Update the room in our mock database
+    this.updateRoom(room);
+    
+    // Broadcast room update
+    this.mockBroadcast('room:updated', room);
+    
+    return newTeam.id;
   }
 
   joinTeam(roomId: string, teamId: string, playerId: string) {
     if (!this.socket) return;
-    this.socket.emit('team:join', { roomId, teamId, playerId });
+    
+    // Find the room in our mock database
+    const room = this.mockRooms.find(r => r.id === roomId);
+    if (!room) return;
+    
+    // Find the team
+    const team = room.teams.find(t => t.id === teamId);
+    if (!team) return;
+    
+    // Find the player
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return;
+    
+    // Add player to team if not already in
+    if (!team.players.some(p => p.id === playerId)) {
+      team.players.push(player);
+      
+      // Update the room in our mock database
+      this.updateRoom(room);
+      
+      // Broadcast room update
+      this.mockBroadcast('room:updated', room);
+    }
   }
 
   leaveTeam(roomId: string, teamId: string, playerId: string) {
     if (!this.socket) return;
-    this.socket.emit('team:leave', { roomId, teamId, playerId });
+    
+    // Find the room in our mock database
+    const room = this.mockRooms.find(r => r.id === roomId);
+    if (!room) return;
+    
+    // Find the team
+    const team = room.teams.find(t => t.id === teamId);
+    if (!team) return;
+    
+    // Remove player from team
+    team.players = team.players.filter(p => p.id !== playerId);
+    
+    // Update the room in our mock database
+    this.updateRoom(room);
+    
+    // Broadcast room update
+    this.mockBroadcast('room:updated', room);
   }
-
-  // Game specific operations for each game type
-  // These will be implemented based on the specific game mechanics
 }
 
 // Create a singleton instance
